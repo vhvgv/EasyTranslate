@@ -1,79 +1,81 @@
-import tkinter as tk
-import threading
+import concurrent.futures
+import requests
+import re
+import os
+import html
+import urllib.parse
 import speech_recognition as sr
+from gtts import gTTS
+from playsound import playsound
 
-class TranslatorApp:
-    def __init__(self, master):
-        self.master = master
-        master.title("Speech Translator")
+class EasyGoogleTranslate:
+    def __init__(self, target_language='tr', timeout=5):
+        self.target_language = target_language
+        self.timeout = timeout
+        self.pattern = r'(?s)class="(?:t0|result-container)">(.*?)<'
 
-        self.translated_text = tk.StringVar()
-        self.input_audio_text = tk.StringVar()
+    def make_request(self, target_language, text, timeout):
+        escaped_text = urllib.parse.quote(text.encode('utf8'))
+        url = 'https://translate.google.com/m?tl=%s&q=%s' % (target_language, escaped_text)
+        response = requests.get(url, timeout=timeout)
+        result = response.text.encode('utf8').decode('utf8')
+        result = re.findall(self.pattern, result)
+        if not result:
+            print('\nError: Unknown error.')
+            f = open('error.txt')
+            f.write(response.text)
+            f.close()
+            exit(0)
+        return html.unescape(result[0])
 
-        self.label_input_audio = tk.Label(master, text="Input Audio:")
-        self.label_input_audio.pack()
+    def translate(self, text, target_language='', timeout=''):
+        if not target_language:
+            target_language = self.target_language
+        if not timeout:
+            timeout = self.timeout
+        if len(text) > 5000:
+            print('\nError: It can only detect 5000 characters at once. (%d characters found.)' % (len(text)))
+            exit(0)
+        return self.make_request(target_language, text, timeout)
 
-        self.input_audio_textbox = tk.Text(master, height=5, width=50)
-        self.input_audio_textbox.pack()
+def get_language_options():
+    print("Enter the target language code (e.g., 'en' for English):")
+    target_language = input()
+    return target_language
 
-        self.label_translated_text = tk.Label(master, text="Translated Text:")
-        self.label_translated_text.pack()
+def speech_to_text():
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        print("Please speak:")
+        audio = recognizer.listen(source)
+    try:
+        text = recognizer.recognize_google(audio)
+        print("You said:", text)
+        return text
+    except sr.UnknownValueError:
+        print("Could not understand audio")
+    except sr.RequestError as e:
+        print("Could not request results; {0}".format(e))
 
-        self.translated_textbox = tk.Text(master, height=5, width=50)
-        self.translated_textbox.pack()
+def text_to_speech(text, language='en'):
+    tts = gTTS(text=text, lang=language, slow=False)
+    tts.save("output.mp3")
+    playsound("output.mp3")
 
-        # Load the images for start and stop buttons
-        self.start_img = tk.PhotoImage(file="start_button.png").subsample(3)
-        self.stop_img = tk.PhotoImage(file="stop_button.png").subsample(5)
+if __name__ == "__main__":
+    target_language = get_language_options()
+    translator = EasyGoogleTranslate(target_language=target_language)
 
-        # Create the start button with a green triangle image
-        self.listen_button = tk.Button(master, image=self.start_img, command=self.start_listening, bd=0, highlightthickness=0)
-        self.listen_button.pack(side=tk.LEFT)
+    # Get input from speech
+    text = speech_to_text()
 
-        # Create the stop button with a red square image
-        self.stop_button = tk.Button(master, image=self.stop_img, command=self.stop_listening, bd=0, highlightthickness=0, state=tk.DISABLED)
-        self.stop_button.pack(side=tk.LEFT)
+    # Check if speech recognition was successful
+    if text is not None:
+        # Translate the text
+        translated_text = translator.translate(text)
+        print("Translated text:", translated_text)
 
-        self.is_listening = False
-
-    def start_listening(self):
-        # Disable the start button and enable the stop button
-        self.listen_button.config(state=tk.DISABLED)
-        self.stop_button.config(state=tk.NORMAL)
-
-        # Start a new thread for listening to microphone input
-        self.is_listening = True
-        threading.Thread(target=self.listen_and_translate).start()
-
-    def stop_listening(self):
-        # Set the flag to stop listening
-        self.is_listening = False
-
-        # Disable the stop button and enable the start button
-        self.listen_button.config(state=tk.NORMAL)
-        self.stop_button.config(state=tk.DISABLED)
-
-    def listen_and_translate(self):
-        # Function to start listening to microphone input
-        r = sr.Recognizer()
-        with sr.Microphone() as source:
-            print("Listening...")
-            while self.is_listening:
-                audio = r.listen(source)
-                try:
-                    print("Recognizing...")
-                    text = r.recognize_google(audio)
-                    self.input_audio_textbox.delete("1.0", tk.END)
-                    self.input_audio_textbox.insert(tk.END, text)
-                    # Here you can call your backend function to translate 'text'
-                    translated_text = "Translated: " + text  # Placeholder translation
-                    self.translated_textbox.delete("1.0", tk.END)
-                    self.translated_textbox.insert(tk.END, translated_text)
-                except sr.UnknownValueError:
-                    print("Could not understand audio")
-                except sr.RequestError as e:
-                    print("Could not request results; {0}".format(e))
-
-root = tk.Tk()
-app = TranslatorApp(root)
-root.mainloop()
+        # Convert translated text to speech
+        text_to_speech(translated_text, target_language)
+    else:
+        print("Speech recognition failed. Please try again.")
