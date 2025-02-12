@@ -61,7 +61,7 @@ def text_to_speech(text, language='en'):
     tts = gTTS(text=text, lang=language, slow=False)
     tts.save("output.mp3")
     playsound("output.mp3")
-
+#h
 if __name__ == "__main__":
     target_language = get_language_options()
     translator = EasyGoogleTranslate(target_language=target_language)
