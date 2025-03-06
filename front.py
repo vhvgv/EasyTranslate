@@ -75,7 +75,7 @@ if __name__ == "__main__":
         translated_text = translator.translate(text)
         print("Translated text:", translated_text)
 
-        # Convert translated text to speech
+        # Convert translated texttospeech
         text_to_speech(translated_text, target_language)
     else:
         print("Speech recognition failed. Please try again.")
